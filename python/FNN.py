@@ -12,20 +12,20 @@ from theano.tensor.shared_randomstreams import RandomStreams
 srng = RandomStreams(seed=234)
 rng = numpy.random
 rng.seed(1234)
-batch_size=100                                                          #batch size
-lr=0.002                                                                #learning rate
-lambda1=0.1 # .01                                                        #regularisation rate
-hidden1 = 300 															#hidden layer 1
-hidden2 = 100 															#hidden layer 2
-acti_type='tanh'                                                    #activation type
-epoch = 100                                                               #epochs number
+batch_size=100                              #batch size
+lr=0.002                                    #learning rate
+lambda1=0.1 # .01                           #regularisation rate
+hidden1 = 300   							#hidden layer 1
+hidden2 = 100 								#hidden layer 2
+acti_type='tanh'                            #activation type
+epoch = 100                                 #epochs number
 advertiser = '2997'
 if len(sys.argv) > 1:
     advertiser = sys.argv[1]
-train_file='../data/train.fm.txt'             #training file
-test_file='../data/test.fm.txt'                   #test file
-fm_model_file='../data/fm.model.txt'                   #fm model file
-#feats = ut.feats_len(train_file)                                           #feature size
+train_file='../data/train.fm.txt'           #training data file
+test_file='../data/test.fm.txt'             #test data file
+fm_model_file='../data/fm.model.txt'        #fm model file, the embedding result of multi-field feature
+#feats = ut.feats_len(train_file)           #feature size
 if len(sys.argv) > 2 and advertiser=='all':
     train_file=train_file+'.5.txt'
 elif len(sys.argv) > 2:
@@ -34,7 +34,7 @@ print train_file
 
 train_size=ut.file_len(train_file)                    #training size
 test_size=ut.file_len(test_file)                      #test size
-n_batch=train_size/batch_size                                        #number of batches
+n_batch=train_size/batch_size                         #number of batches
 x_drop=1
 
 if advertiser=='2997':#
@@ -45,15 +45,28 @@ if advertiser=='2997':#
     lambda1=0.0
     lambda_fm=0.1
 
-    
-    
-
-name_field = {'weekday':0, 'hour':1, 'useragent':2, 'IP':3, 'region':4, 'city':5, 'adexchange':6, 'domain':7, 'slotid':8,
-       'slotwidth':9, 'slotheight':10, 'slotvisibility':11, 'slotformat':12, 'creative':13, 'advertiser':14, 'slotprice':15}
+# discrete and categorical features
+name_field = {
+                'weekday':0
+                , 'hour':1
+                , 'useragent':2
+                , 'IP':3
+                , 'region':4
+                , 'city':5
+                , 'adexchange':6
+                , 'domain':7
+                , 'slotid':8
+                , 'slotwidth':9
+                , 'slotheight':10
+                , 'slotvisibility':11
+                , 'slotformat':12
+                , 'creative':13
+                , 'advertiser':14
+                , 'slotprice':15
+            }
 
 def log_p(msg,m=""):
     ut.logfile(msg,"fm"+str(advertiser))
-
 
 log_p('ad:'+str(advertiser))
 log_p( 'batch_size:'+str(batch_size))
@@ -81,9 +94,11 @@ for line in fi:
         field = name_field[name]
         feat_field[feat] = field
 
+# discrete&categorical feature's low rank weights index range: start_i,end_i
 def feat_layer_one_index(feat, l):
     return 1 + feat_field[feat] * k + l
 
+# embedding discrete&categorical features into fm's vector low rank representation
 def feats_to_layer_one_array(feats):
     x = numpy.zeros(xdim)
     x[0] = w_0
@@ -91,12 +106,19 @@ def feats_to_layer_one_array(feats):
         x[feat_layer_one_index(feat, 0):feat_layer_one_index(feat, k)] = feat_weights[feat]
     return x
 
-log_p('drop_mlp3fm.py|ad:'+advertiser+'|drop:'+str(dropout)+'|b_size:'+str(batch_size)+' | X:'+str(xdim) + ' | Hidden 1:'+str(hidden1)+ ' | Hidden 2:'+str(hidden2)+
-        ' | L_r:'+str(lr)+ ' | activation1:'+ str(acti_type)+
-        ' | lambda:'+str(lambda1)
-        )
-        
+log_p('drop_mlp3fm.py|ad:'+advertiser
+    +'|drop:'+str(dropout)
+    +'|b_size:'+str(batch_size)
+    +' | X:'+str(xdim)
+    +' | Hidden 1:'+str(hidden1)
+    +' | Hidden 2:'+str(hidden2)
+    +' | L_r:'+str(lr)
+    +' | activation1:'+ str(acti_type)
+    +' | lambda:'+str(lambda1)
+    )
+
 # initialise parameters
+# W1 \in R^{xdim \times hidden1}
 w=rng.uniform(  low=-numpy.sqrt(6. / (xdim + hidden1)),
                 high=numpy.sqrt(6. / (xdim + hidden1)),
                 size=(xdim,hidden1))
@@ -106,10 +128,10 @@ elif acti_type=='tanh':
     ww1=numpy.asarray((w*4))
 else:
     ww1=numpy.asarray(rng.uniform(-1,1,size=(xdim,hidden1)))
-
+#b1 \in R^hidden1
 bb1=numpy.zeros(hidden1)
 
-
+#W2 \in R^{hidden1 \times hidden2}
 v=rng.uniform(  low=-numpy.sqrt(6. / (hidden1 + hidden2)),
                 high=numpy.sqrt(6. / (hidden1 + hidden2)),
                 size=(hidden1,hidden2))
@@ -119,11 +141,11 @@ elif acti_type=='tanh':
     ww2=numpy.asarray((v*4))
 else:
     ww2=numpy.asarray(rng.uniform(-1,1,size=(hidden1,hidden2)))
-
+# b2 \in R^hidden2
 bb2=numpy.zeros(hidden2)
 
+# W3 \in R^hidden2
 ww3=numpy.zeros(hidden2)
-
 
 # Declare Theano symbolic variables
 x = T.matrix("x")
@@ -137,7 +159,6 @@ b3 = theano.shared(0. , name="b3")
 
 
 # Construct Theano expression graph
-
 r0=srng.binomial(size=(1,xdim),n=1,p=x_drop)
 x=x*r0[0]
 
@@ -158,34 +179,35 @@ elif acti_type=='linear':
     h2 = z2
 elif acti_type=='tanh':
     h2=T.tanh(z2)
-    
+
 d2=T.tanh(T.dot(d1, w2) + b2)
 r2=srng.binomial(size=(1,hidden2),n=1,p=dropout)
 d2=d2*r2[0]
 
 
 p_drop=(1 / (1 + T.exp(-T.dot(d2, w3) - b3)))
-p_1 = 1 / (1 + T.exp(-T.dot(h2, w3) - b3))               # Probability that target = 1
-prediction = p_1 #> 0.5                                   # The prediction thresholded
-xent = - y * T.log(p_drop) - (1-y) * T.log(1-p_drop)             # Cross-entropy loss function
-cost = xent.sum() + lambda1 * ((w3 ** 2).sum() + (b3 ** 2))    # The cost to minimize
-gw3, gb3, gw2, gb2, gw1, gb1, gx = T.grad(cost, [w3, b3, w2, b2, w1, b1, x])        # Compute the gradient of the cost
+p_1 = 1 / (1 + T.exp(-T.dot(h2, w3) - b3))                      # Probability that target = 1
+prediction = p_1 #> 0.5                                         # The prediction thresholded
+xent = - y * T.log(p_drop) - (1-y) * T.log(1-p_drop)            # Cross-entropy loss function
+cost = xent.sum() + lambda1 * ((w3 ** 2).sum() + (b3 ** 2))     # The cost to minimize
 
+# Compute the gradient of the cost
+gw3, gb3, gw2, gb2, gw1, gb1, gx = T.grad(cost, [w3, b3, w2, b2, w1, b1, x])
 
 # Compile
 train = theano.function(
           inputs=[x,y],
-          outputs=[gx, w1, w2, w3,b1,b2,b3],updates=(
+          outputs=[gx, w1, w2, w3, b1, b2, b3],updates=(
           (w1, w1 - lr * gw1), (b1, b1 - lr * gb1),
           (w2, w2 - lr * gw2), (b2, b2 - lr * gb2),
           (w3, w3 - lr * gw3), (b3, b3 - lr * gb3)))
-predict = theano.function(inputs=[x], outputs=prediction)
 
+predict = theano.function(inputs=[x], outputs=prediction)
 
 #print error
 def print_err(file,msg=''):
     auc,rmse=get_err_bat(file)
-    log_p( msg + '\t' + str(auc) + '\t' + str(rmse))    
+    log_p( msg + '\t' + str(auc) + '\t' + str(rmse))
 
 
 #get error via batch
@@ -287,9 +309,9 @@ for i in range(epoch):
     for j in range(n_batch):
         if index>train_size:
             break
-        f,x,y = get_batch_data(train_file,index,batch_size)
+        f, x, y = get_batch_data(train_file, index, batch_size)
         index += batch_size
-        gx, w1t, w2t, w3t,b1t,b2t,b3t = train(x,y)
+        gx, w1t, w2t, w3t, b1t, b2t, b3t = train(x, y)
         b_size = len(f)
         for t in range(b_size):
             ft = f[t]
@@ -299,7 +321,7 @@ for i in range(epoch):
                     feat_weights[feat][l] = feat_weights[feat][l] * (1 - 2. * lambda_fm * lr / b_size) \
                                             - lr * gxt[feat_layer_one_index(feat, l)] * 1
 
-    
+
     train_time = time.time() - start_time
     mins = int(train_time / 60)
     secs = int(train_time % 60)
@@ -320,7 +342,7 @@ for i in range(epoch):
     log_p( 'Test Err:' + str(i) + '\t' + str(auc) + '\t' + str(rmse))
     print 'test error: ' + str(mins) + 'm ' + str(secs) + 's'
 
-    #stop training when no improvement for a while 
+    #stop training when no improvement for a while
     if auc>min_err:
         best_w1=w1t
         best_w2=w2t
