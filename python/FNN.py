@@ -9,6 +9,10 @@ import linecache
 import math
 import dl_utils as ut
 from theano.tensor.shared_randomstreams import RandomStreams
+
+def log_p(msg,m=""):
+    ut.logfile(msg,"fm"+str(advertiser))
+
 srng = RandomStreams(seed=234)
 rng = numpy.random
 rng.seed(1234)
@@ -65,9 +69,6 @@ name_field = {
                 , 'slotprice':15
             }
 
-def log_p(msg,m=""):
-    ut.logfile(msg,"fm"+str(advertiser))
-
 log_p('ad:'+str(advertiser))
 log_p( 'batch_size:'+str(batch_size))
 feat_field = {}
@@ -84,21 +85,30 @@ for line in fi:
         first = False
         w_0 = float(s[0])
         feat_num = int(s[1])
+        # s[2] is the dim of vector v, 1 for w_i
         k = int(s[2]) + 1 # w and v
+        # 1 for w_0
         xdim = 1 + len(name_field) * k
     else:
         feat = int(s[0])
+        # vector v, len k
         weights = [float(s[1 + i]) for i in range(k)]
         feat_weights[feat] = weights
+        # feature name
         name = s[1 + k][0:s[1 + k].index(':')]
+        # feature index
         field = name_field[name]
+        # feature <id, index> pair
         feat_field[feat] = field
 
 # discrete&categorical feature's low rank weights index range: start_i,end_i
+# feat: feature id num
+# l   : len, it should be length of v, that is k
 def feat_layer_one_index(feat, l):
     return 1 + feat_field[feat] * k + l
 
 # embedding discrete&categorical features into fm's vector low rank representation
+# in form of vector, NOT in matrix form
 def feats_to_layer_one_array(feats):
     x = numpy.zeros(xdim)
     x[0] = w_0
@@ -156,7 +166,6 @@ w3 = theano.shared(ww3, name="w3")
 b1 = theano.shared(bb1, name="b1")
 b2 = theano.shared(bb2, name="b2")
 b3 = theano.shared(0. , name="b3")
-
 
 # Construct Theano expression graph
 r0=srng.binomial(size=(1,xdim),n=1,p=x_drop)
